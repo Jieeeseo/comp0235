@@ -1,0 +1,45 @@
+---
+- name: Create shared directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: almalinux
+    group: almalinux
+  loop:
+    - /nfs
+    - /nfs/pdb70
+    - /nfs/data
+  become: true
+  when: inventory_hostname == groups['workers'][0]
+
+- name: Create exports file
+  ansible.builtin.copy:
+    dest: /etc/exports
+    content: |
+      /nfs *(rw,sync,no_root_squash,no_subtree_check)
+    mode: '0644'
+  become: true
+  notify: Restart NFS Worker
+  when: inventory_hostname == groups['workers'][0]
+
+- name: Export shares
+  ansible.builtin.command: exportfs -ra
+  become: true
+  when: inventory_hostname == groups['workers'][0]
+
+- name: Start NFS Service
+  ansible.builtin.systemd:
+    name: nfs-server
+    state: started
+    enabled: yes
+  become: true
+  when: inventory_hostname == groups['workers'][0]
+
+- name: Create home symlink
+  ansible.builtin.file:
+    src: /nfs
+    dest: /home/almalinux/nfs
+    state: link
+  become: true
+  when: inventory_hostname == groups['workers'][0]

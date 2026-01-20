@@ -1,0 +1,7 @@
+---
+- name: Update all packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  become: true
+  notify: Restart Machine

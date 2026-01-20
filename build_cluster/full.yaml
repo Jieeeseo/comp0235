@@ -1,0 +1,18 @@
+---
+- name: Apply common configuration
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name : Configure Host Node
+  hosts: host
+  become: true
+  roles:
+    - host
+
+- name: Configure Worker Nodes
+  hosts: workers
+  become: true
+  roles:
+    - workers 

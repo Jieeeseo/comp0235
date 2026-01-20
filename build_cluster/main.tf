@@ -1,7 +1,7 @@
 # Interpret namespace and network name based on user name
 locals {
-  namespace = "${var.username}${var.namespace_ending}"
-  network_name = "${var.username}${var.namespace_ending}/ds4eng"
+  namespace = "${var.namespace_ending}"
+  network_name = "${var.namespace_ending}/ds4eng"
 }
 
 data "harvester_image" "img" {

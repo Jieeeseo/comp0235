@@ -1,0 +1,26 @@
+---
+- name: Create mount point
+  ansible.builtin.file:
+    path: /nfs
+    state: directory
+    mode: '0755'
+  become: true
+  when: inventory_hostname != groups['workers'][0]
+
+- name: Mount NFS from Worker-1
+  ansible.posix.mount:
+    path: /nfs
+    src: "{{ nfs_server_ip }}:/nfs"
+    fstype: nfs
+    opts: defaults,_netdev
+    state: mounted
+  become: true
+  when: inventory_hostname != groups['workers'][0]
+
+- name: Create home symlink
+  ansible.builtin.file:
+    src: /nfs
+    dest: /home/almalinux/nfs
+    state: link
+  become: true
+  when: inventory_hostname != groups['workers'][0]

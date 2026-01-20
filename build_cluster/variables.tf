@@ -6,18 +6,18 @@ variable img_display_name {
 # your rancher username (e.g. ucbcdwb)
 variable username {
   type = string
-  default = ""
+  default = "zczqh91"
 }
 
 variable namespace_ending {
   type = string
-  default = "-comp0235-ns"
+  default = "zczqh91-comp0235-ns"
 }
 
 # The name of your ssh key uploaded to rancher 
 variable keyname {
   type = string
-  default = ""
+  default = "comp0235-win"
 }
 
 variable host {
@@ -27,5 +27,5 @@ variable host {
 
 variable worker {
   type    = number
-  default = 5
+  default = 4
 }

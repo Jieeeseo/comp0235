@@ -1,0 +1,10 @@
+---
+- name: Set NFS Server IP fact
+  set_fact:
+    nfs_server_ip: "{{ hostvars[groups['workers'][0]]['ansible_host'] | default(groups['workers'][0]) }}"
+
+- name: Import NFS Server Tasks
+  import_tasks: nfs-server.yaml
+
+- name: Import NFS Client Tasks
+  import_tasks: nfs-client.yaml

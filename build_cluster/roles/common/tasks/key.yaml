@@ -1,0 +1,6 @@
+---
+- name: Add lecturer's public key to authorized_keys
+  ansible.posix.authorized_key:
+    user: almalinux 
+    state: present
+    key: "{{ lookup('file', 'lecturer_key.pub') }}"

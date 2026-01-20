@@ -1,0 +1,3 @@
+- name: Restart Machine
+  ansible.builtin.reboot:
+    msg: "Rebooting due to system updates"
