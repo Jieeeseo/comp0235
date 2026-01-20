@@ -9,10 +9,10 @@
   hosts: host
   become: true
   roles:
-    - host
+    
 
 - name: Configure Worker Nodes
   hosts: workers
   become: true
   roles:
-    - workers 
+    - nfs 
