@@ -37,6 +37,8 @@ resource "harvester_virtualmachine" "host" {
 
   description = "Base VM"
 
+  tags = var.host_tags
+
   cpu    = 4
   memory = "8Gi"
 

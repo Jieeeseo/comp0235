@@ -9,7 +9,7 @@
   hosts: host
   become: true
   roles:
-    
+    - rabbitmq 
 
 - name: Configure Worker Nodes
   hosts: workers

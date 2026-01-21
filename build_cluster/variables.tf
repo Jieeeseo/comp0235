@@ -29,3 +29,14 @@ variable worker {
   type    = number
   default = 4
 }
+
+variable "host_tags" {
+  description = "Tags/labels applied to the host VM "
+  type        = map(string)
+  default = {
+    "condenser_ingress_isEnabled" = "true"
+    "condenser_ingress_rabbit_hostname" = "rabbit-zczqh91"
+    "condenser_ingress_rabbit_port"     = "15672"
+  }
+}
+

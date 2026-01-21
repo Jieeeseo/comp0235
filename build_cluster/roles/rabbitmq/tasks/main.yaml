@@ -1,0 +1,72 @@
+---
+- name: Install RabbitMQ repo file
+  copy:
+    src: rabbitmq.repo
+    dest: /etc/yum.repos.d/rabbitmq.repo
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install dependencies
+  dnf:
+    name:
+      - socat
+      - logrotate
+      - firewalld
+      - python3-firewall
+    state: present
+    update_cache: yes
+
+- name: Install Erlang and RabbitMQ Server
+  dnf:
+    name:
+      - erlang
+      - rabbitmq-server
+    state: present
+    update_cache: yes
+
+- name: Start and Enable RabbitMQ Service
+  service:
+    name: rabbitmq-server
+    state: started
+    enabled: yes
+
+- name: Enable RabbitMQ Management Plugin
+  command: rabbitmq-plugins enable rabbitmq_management
+  changed_when: false
+
+- name: Restart RabbitMQ after enabling management plugin
+  service:
+    name: rabbitmq-server
+    state: restarted
+
+- name: Create RabbitMQ User
+  command: rabbitmqctl add_user jay comp0235
+  register: rabbitmq_user
+  failed_when: rabbitmq_user.rc != 0 and
+             ("already exists" not in (rabbitmq_user.stderr | lower))
+  changed_when: rabbitmq_user.rc == 0
+
+- name: Set Permissions for User
+  command: rabbitmqctl set_permissions -p / jay ".*" ".*" ".*"
+  changed_when: false
+
+- name: Set User Tags 
+  command: rabbitmqctl set_user_tags jay administrator
+  changed_when: false
+
+- name: Start and Enable Firewalld Service
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: Open Firewall ports for RabbitMQ
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+    immediate: yes
+  loop:
+    - 5672/tcp   # Main AMQP port
+    - 15672/tcp  # Management UI port
