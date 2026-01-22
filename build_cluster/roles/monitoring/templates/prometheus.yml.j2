@@ -6,7 +6,6 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # 监控所有节点的物理资源 (CPU/内存)
   - job_name: 'node_exporter'
     static_configs:
       - targets:
@@ -14,12 +13,10 @@ scrape_configs:
         - '{{ hostvars[host].ansible_host | default(host) }}:9100'
 {% endfor %}
 
-  # 新增: 监控 RabbitMQ (队列长度/消息速率)
-  # RabbitMQ Management 插件默认在 15672 端口暴露 /metrics
   - job_name: 'rabbitmq'
     metrics_path: '/metrics'
     static_configs:
       - targets:
 {% for host in groups['host'] %}
-        - '{{ hostvars[host].ansible_host | default(host) }}:15672'
+        - '{{ hostvars[host].ansible_host | default(host) }}:15692'
 {% endfor %}

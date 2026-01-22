@@ -89,6 +89,8 @@ resource "harvester_virtualmachine" "worker" {
 
   description = "Base VM"
 
+  tags = var.worker_tags
+
   cpu    = 4
   memory = "32Gi"
 

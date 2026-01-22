@@ -35,8 +35,30 @@ variable "host_tags" {
   type        = map(string)
   default = {
     "condenser_ingress_isEnabled" = "true"
+
     "condenser_ingress_rabbit_hostname" = "rabbit-zczqh91"
     "condenser_ingress_rabbit_port"     = "15672"
+
+    "condenser_ingress_prometheus_hostname"   = "prometheus-zczqh91"
+    "condenser_ingress_prometheus_port"       = "9090"
+    
+    "condenser_ingress_grafana_hostname"      = "grafana-zczqh91"
+    "condenser_ingress_grafana_port"          = "3000"
+
+    "condenser_ingress_nodeexporter_hostname" = "nodeexporter-host-zczqh91"
+    "condenser_ingress_nodeexporter_port"     = "9100"
   }
 }
 
+
+variable "worker_tags" {
+  description = "Tags/labels applied to the worker VMs"
+  type        = map(string)
+  default = {
+    "condenser_ingress_isEnabled" = "true"
+    "condenser_ingress_isAllowed" = "true"
+
+    "condenser_ingress_node_hostname" = "node-worker-zczqh91"
+    "condenser_ingress_node_port"     = "9100"
+  }
+}

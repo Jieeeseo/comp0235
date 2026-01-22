@@ -70,3 +70,9 @@
   loop:
     - 5672/tcp   # Main AMQP port
     - 15672/tcp  # Management UI port
+
+- name: enable rabbitmq prometheus plugin
+  command: rabbitmq-plugins enable rabbitmq_prometheus
+  register: plugin_result
+  changed_when: "'Plugin configuration has changed' in plugin_result.stdout"
+  notify: Restart RabbitMQ
