@@ -1,0 +1,81 @@
+---
+- name: Install Celery via pip
+  pip:
+    name: celery
+    executable: pip3
+  become: true
+
+- name: Create application directory
+  file:
+    path: /opt/calc_engine
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Create work directory for temporary files
+  file:
+    path: /opt/calc_engine/work_dir
+    state: directory
+    mode: '0777' # 允许写入临时文件
+  become: true
+
+- name: Deploy application code
+  copy:
+    src: "{{ item }}"
+    dest: /opt/calc_engine/
+    mode: '0644'
+  with_items:
+    - celery_app.py
+    - pipeline_script.py
+    - results_parser.py
+  notify: Restart Celery
+  become: true
+
+- name: Create Celery configuration directory
+  file:
+    path: /etc/conf.d
+    state: directory
+  become: true
+
+- name: Configure Celery environment variables
+  copy:
+    dest: /etc/conf.d/celery
+    content: |
+      CELERYD_NODES="w1"
+      CELERY_BIN="/usr/local/bin/celery"
+      CELERY_APP="pipeline_script"
+      CELERYD_MULTI="multi"
+      CELERYD_PID_FILE="/var/run/celery/%n.pid"
+      CELERYD_LOG_FILE="/var/log/celery/%n%I.log"
+      CELERYD_LOG_LEVEL="INFO"
+    mode: '0644'
+  notify: Restart Celery
+  become: true
+
+- name: Create log and pid directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  with_items:
+    - /var/log/celery
+    - /var/run/celery
+  become: true
+
+- name: Deploy Celery systemd service
+  template:
+    src: celery.service.j2
+    dest: /etc/systemd/system/celery.service
+    mode: '0644'
+  notify: Restart Celery
+  become: true
+
+- name: Enable and start Celery service
+  systemd:
+    name: celery
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  become: true

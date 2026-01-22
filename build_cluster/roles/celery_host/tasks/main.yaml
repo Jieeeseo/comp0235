@@ -1,0 +1,30 @@
+---
+# 1. 安装 Celery 库，这样 Host 才能运行 Python 脚本发送任务
+- name: Install Celery via pip
+  pip:
+    name: celery
+    executable: pip3
+  become: true
+
+# 2. 创建存放代码的目录 (保持和 Worker 一致，方便管理)
+- name: Create application directory
+  file:
+    path: /opt/calc_engine
+    state: directory
+    mode: '0755'
+  become: true
+
+# 3. 拷贝代码
+# 注意：这里我们直接引用 'celery_worker' role 里的文件
+# 这样你就不用在机器上维护两份相同的 Python 代码了
+- name: Deploy application code to Host
+  copy:
+    src: "roles/celery_worker/files/{{ item }}"
+    dest: /opt/calc_engine/
+    mode: '0644'
+  with_items:
+    - celery_app.py
+    - pipeline_script.py
+    # Host 不需要 results_parser.py，因为它只负责发任务，不负责解析结果
+    # 但如果你想保持一致也可以拷过去
+  become: true

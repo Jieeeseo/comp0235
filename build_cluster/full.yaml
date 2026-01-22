@@ -9,7 +9,8 @@
   hosts: host
   become: true
   roles:
-    - rabbitmq 
+    - rabbitmq
+    - celery_host 
 
 - name: Configure Worker Nodes
   hosts: workers
@@ -17,3 +18,4 @@
   roles:
     - nfs
     - bio_tools 
+    - celery_worker
