@@ -1,0 +1,86 @@
+---
+- name: Install specific build dependencies for bio tools
+  ansible.builtin.dnf:
+    name:
+      - cmake
+      - zlib-devel
+    state: present
+  become: true
+
+- name: Install Python libraries
+  pip:
+    name:
+      - biopython
+      - torch
+      - numpy
+      - scipy
+    executable: pip3
+    extra_args: --no-cache-dir
+  become: true
+
+- name: Clone S4Pred repository
+  git:
+    repo: 'https://github.com/psipred/s4pred.git'
+    dest: /opt/s4pred
+    force: yes
+  become: true
+
+- name: Download S4Pred weights
+  get_url:
+    url: http://bioinfadmin.cs.ucl.ac.uk/downloads/s4pred/weights.tar.gz
+    dest: /opt/s4pred/weights.tar.gz
+    mode: '0644'
+  become: true
+
+- name: Unarchive S4Pred weights
+  unarchive:
+    src: /opt/s4pred/weights.tar.gz
+    dest: /opt/s4pred
+    remote_src: yes
+    creates: /opt/s4pred/weights
+  become: true
+
+- name: Clone HHSuite repository
+  git:
+    repo: 'https://github.com/soedinglab/hh-suite.git'
+    dest: /opt/hh-suite
+    recursive: yes 
+    force: yes
+  become: true
+
+- name: Create HHSuite build directory
+  file:
+    path: /opt/hh-suite/build
+    state: directory
+  become: true
+
+- name: Configure HHSuite with CMake
+  command: cmake -DCMAKE_INSTALL_PREFIX=/opt/hh-suite ..
+  args:
+    chdir: /opt/hh-suite/build
+    creates: /opt/hh-suite/build/Makefile
+  become: true
+
+- name: Compile HHSuite (Make)
+  command: make -j 2
+  args:
+    chdir: /opt/hh-suite/build
+    creates: /opt/hh-suite/build/bin/hhsearch 
+  become: true
+
+- name: Install HHSuite binaries
+  command: make install
+  args:
+    chdir: /opt/hh-suite/build
+    creates: /opt/hh-suite/bin/hhblits
+  become: true
+
+- name: Ensure tool directories are readable by all
+  file:
+    path: "{{ item }}"
+    mode: 'u=rwX,g=rX,o=rX' 
+    recurse: yes
+  loop:
+    - /opt/s4pred
+    - /opt/hh-suite
+  become: true

@@ -15,4 +15,5 @@
   hosts: workers
   become: true
   roles:
-    - nfs 
+    - nfs
+    - bio_tools 
