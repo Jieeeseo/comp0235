@@ -1,0 +1,7 @@
+---
+# 1. 在所有机器上安装 Node Exporter
+- import_tasks: node_exporter.yaml
+
+# 2. 仅在 Host (Master) 上安装监控服务器组件 (Prometheus & Grafana)
+- import_tasks: server.yaml
+  when: inventory_hostname in groups['host']

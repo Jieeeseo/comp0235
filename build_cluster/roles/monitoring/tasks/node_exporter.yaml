@@ -1,0 +1,38 @@
+---
+- name: Install Node Exporter
+  ansible.builtin.dnf:
+    name: golang-github-prometheus-node-exporter
+    state: present
+    disable_gpg_check: yes # 保持一致
+  become: true
+
+- name: Install python3-firewall for Ansible firewalld module
+  ansible.builtin.dnf:
+    name:
+      - firewalld 
+      - python3-firewall
+    state: present
+  become: true
+
+# 修复：确保 Firewalld 服务已启动，否则无法添加规则
+- name: Start and Enable Firewalld Service
+  systemd:
+    name: firewalld
+    state: started
+    enabled: yes
+  become: true
+    
+- name: Start and Enable Node Exporter Service
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
+  become: true
+
+- name: Open Firewall port 9100 for Node Exporter
+  firewalld:
+    port: 9100/tcp
+    permanent: yes
+    state: enabled
+  become: true
+  notify: Reload Firewalld

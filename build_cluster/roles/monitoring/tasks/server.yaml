@@ -1,0 +1,56 @@
+---
+# 确保 EPEL 源已安装（Prometheus 通常在 EPEL 中）
+- name: Install EPEL release
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  become: true
+
+- name: Install Prometheus and Grafana
+  ansible.builtin.dnf:
+    name:
+      - golang-github-prometheus
+      - golang-github-prometheus-node-exporter
+      - grafana
+    state: present
+    update_cache: yes
+    disable_gpg_check: yes
+  become: true
+
+- name: Install python3-firewall for Ansible firewalld module
+  ansible.builtin.dnf:
+    name: python3-firewall
+    state: present
+  become: true
+
+- name: Deploy Prometheus Configuration
+  template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify: Restart Prometheus
+
+- name: Start and Enable Services
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - prometheus
+    - grafana-server
+    - node_exporter
+  become: true
+
+- name: Open Firewall ports for Monitoring
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - 9090/tcp  # Prometheus
+    - 3000/tcp  # Grafana
+  become: true
+  notify: Reload Firewalld

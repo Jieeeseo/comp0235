@@ -4,6 +4,7 @@
   become: true
   roles:
     - common
+    - monitoring
 
 - name : Configure Host Node
   hosts: host

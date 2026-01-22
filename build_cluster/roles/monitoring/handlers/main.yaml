@@ -1,7 +1,7 @@
 ---
-- name: Restart NFS Worker
-  ansible.builtin.systemd:
-    name: nfs-server
+- name: Restart Prometheus
+  systemd:
+    name: prometheus
     state: restarted
   become: true
 

@@ -36,6 +36,19 @@
   become: true
   when: inventory_hostname == groups['workers'][0]
 
+- name: Open Firewall ports for NFS
+  firewalld:
+    service: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - nfs
+    - mountd
+    - rpc-bind
+  become: true
+  notify: Reload Firewalld
+  when: inventory_hostname == groups['workers'][0] 
+
 - name: Create home symlink
   ansible.builtin.file:
     src: /nfs
