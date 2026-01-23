@@ -1,49 +1,54 @@
 import sys
 import os
 import shutil
-from subprocess import Popen, PIPE
-from celery_app import app 
+import uuid
+import json
+import logging
+from subprocess import run, PIPE
+from celery_app import app
+# 直接导入解析器函数，而不是用 subprocess 调用
+import results_parser
 
 # ================= 配置路径 =================
-# 确保这些路径与你之前验证通过的路径一致
 S4PRED_SCRIPT = '/opt/s4pred/run_model.py'
 HHSEARCH_BIN = '/opt/hh-suite/bin/hhsearch'
-HHSEARCH_DB = '/nfs/pdb70/pdb70' 
-RESULTS_PARSER = '/opt/calc_engine/results_parser.py'
-# ===========================================
+HHSEARCH_DB = '/nfs/pdb70/pdb70'
+# 结果直接写入 NFS，保证数据安全
+RESULTS_DIR = '/nfs/data/results'
 
-def run_parser(hhr_file):
-    cmd = ['python3', RESULTS_PARSER, hhr_file]
-    p = Popen(cmd, stdin=PIPE,stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate()
-    return out.decode("utf-8") if p.returncode == 0 else f"Error: {err.decode('utf-8')}"
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-def run_hhsearch(a3m_file, hhr_file):
-    # 检查数据库文件是否存在
-    db_check_path = HHSEARCH_DB + "_hhm.ffindex"
-    if not os.path.exists(db_check_path) and not os.path.exists(HHSEARCH_DB + ".hhm"):
-        return False, f"Database not found at {HHSEARCH_DB}"
+# ================= 辅助函数 =================
 
-    # 修正: 添加 -o 参数，将结果写入文件，而不是仅打印到屏幕
-    cmd = [HHSEARCH_BIN, '-i', a3m_file, '-cpu', '1', '-d', HHSEARCH_DB, '-o', hhr_file]
+def run_hhsearch(a3m_file, hhr_file, cpu_cores=1):
+    # 检查数据库
+    if not os.path.exists(HHSEARCH_DB + "_hhm.ffindex"):
+         return False, f"Database not found at {HHSEARCH_DB}"
+
+    cmd = [HHSEARCH_BIN, '-i', a3m_file, '-cpu', str(cpu_cores), '-d', HHSEARCH_DB, '-o', hhr_file]
     
-    p = Popen(cmd, stdin=PIPE,stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate()
+    # 使用 subprocess.run 更现代、更安全
+    result = run(cmd, stdout=PIPE, stderr=PIPE, universal_newlines=True)
     
-    # 既然指定了 -o 输出到文件，这里 stdout (out) 通常是空的或者只有日志，不需要返回作为结果内容
-    return (True, "Run Complete") if p.returncode == 0 else (False, err.decode('utf-8'))
+    if result.returncode == 0:
+        return True, "Success"
+    else:
+        return False, result.stderr
 
 def read_horiz(tmp_file, horiz_file, a3m_file):
-    if not os.path.exists(horiz_file):
-        return False
-    pred = ''
-    conf = ''
-    with open(horiz_file) as fh_in:
-        for line in fh_in:
+    if not os.path.exists(horiz_file): return False
+    
+    pred, conf = '', ''
+    with open(horiz_file) as fh:
+        for line in fh:
             if line.startswith('Conf: '): conf += line[6:].rstrip()
             if line.startswith('Pred: '): pred += line[6:].rstrip()
-    with open(tmp_file) as fh_in:
-        contents = fh_in.read()
+            
+    with open(tmp_file) as fh:
+        contents = fh.read()
+        
     with open(a3m_file, "w") as fh_out:
         fh_out.write(f">ss_pred\n{pred}\n>ss_conf\n{conf}\n")
         fh_out.write(contents)
@@ -51,62 +56,91 @@ def read_horiz(tmp_file, horiz_file, a3m_file):
 
 def run_s4pred(input_file, out_file):
     cmd = ['python3', S4PRED_SCRIPT, '-t', 'horiz', '-T', '1', input_file]
-    p = Popen(cmd, stdin=PIPE,stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate()
-    if p.returncode != 0:
-        return False, err.decode('utf-8')
-    else:
-        # S4Pred 将结果打印到 stdout，我们需要手动写入文件
-        with open(out_file, "w") as fh_out: fh_out.write(out.decode("utf-8"))
-        return True, "Success"
+    result = run(cmd, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+    
+    if result.returncode != 0:
+        return False, result.stderr
+    
+    with open(out_file, "w") as fh:
+        fh.write(result.stdout)
+    return True, "Success"
 
-# ================= Celery Task 定义 =================
+# ================= Celery Task =================
 
-@app.task(name='pipeline.run_analysis')
-def run_analysis_task(sequence_id, sequence_data):
-    """
-    Celery Worker 执行入口
-    """
-    work_dir = '/opt/calc_engine/work_dir'
-    if not os.path.exists(work_dir):
-        os.makedirs(work_dir, exist_ok=True)
-    os.chdir(work_dir)
+@app.task(name='pipeline.run_analysis', bind=True)
+def run_analysis_task(self, sequence_id, sequence_data):
+    # 1. 创建唯一的临时工作目录，避免并发冲突
+    task_uid = str(uuid.uuid4())
+    work_dir = os.path.join('/opt/calc_engine/work_dir', task_uid)
+    os.makedirs(work_dir, exist_ok=True)
+    
+    # 确保 NFS 结果目录存在
+    os.makedirs(RESULTS_DIR, exist_ok=True)
 
+    # 定义绝对路径
     safe_id = sequence_id.replace('|', '_').replace('/', '_')
-    base_name = f"{safe_id}"
-    tmp_file = f"{base_name}.fas"
-    horiz_file = f"{base_name}.horiz"
-    a3m_file = f"{base_name}.a3m"
-    hhr_file = f"{base_name}.hhr"
+    tmp_fas = os.path.join(work_dir, 'query.fas')
+    horiz_file = os.path.join(work_dir, 'query.horiz')
+    a3m_file = os.path.join(work_dir, 'query.a3m')
+    hhr_file = os.path.join(work_dir, 'query.hhr')
+    
+    # 最终结果文件路径
+    final_json_path = os.path.join(RESULTS_DIR, f"{safe_id}.json")
+
+    # 如果结果已存在，直接跳过 (幂等性设计)
+    if os.path.exists(final_json_path):
+        shutil.rmtree(work_dir)
+        return f"Skipped: {sequence_id} already exists"
 
     try:
-        # 1. 写入临时 FASTA 文件
-        with open(tmp_file, "w") as fh_out:
-            fh_out.write(f">{sequence_id}\n{sequence_data}\n")
+        # Step 1: Write FASTA
+        with open(tmp_fas, "w") as f:
+            f.write(f">{sequence_id}\n{sequence_data}\n")
 
-        # 2. 运行 S4Pred
-        success, msg = run_s4pred(tmp_file, horiz_file)
-        if not success: return f"S4Pred Failed: {msg}"
+        # Step 2: S4Pred
+        ok, msg = run_s4pred(tmp_fas, horiz_file)
+        if not ok: raise Exception(f"S4Pred failed: {msg}")
 
-        # 3. 格式转换
-        if not read_horiz(tmp_file, horiz_file, a3m_file):
-            return "Read Horiz Failed: .horiz file missing"
+        # Step 3: Convert
+        if not read_horiz(tmp_fas, horiz_file, a3m_file):
+            raise Exception("Horiz parsing failed")
 
-        # 4. 运行 HHSearch (传入输出文件名 hhr_file)
-        success, msg = run_hhsearch(a3m_file, hhr_file)
-        if not success: return f"HHSearch Failed: {msg}"
+        # Step 4: HHSearch
+        ok, msg = run_hhsearch(a3m_file, hhr_file)
+        if not ok: raise Exception(f"HHSearch failed: {msg}")
 
-        # 5. 运行 Parser
+        # Step 5: Parse Results (调用 Python 函数)
         if os.path.exists(hhr_file) and os.path.getsize(hhr_file) > 0:
-            result_txt = run_parser(hhr_file)
+            # 获取 Best Hit 信息
+            hit_info = results_parser.get_hhr_results(hhr_file)
+            # 获取统计信息 (Mean, Std, GMean)
+            mean, std, gmean = results_parser.get_score_statistics(hhr_file)
             
-            # 清理临时文件
-            for f in [tmp_file, horiz_file, a3m_file, hhr_file]:
-               if os.path.exists(f): os.remove(f)
+            # 构造最终数据结构
+            output_data = {
+                "id": sequence_id,
+                "best_hit": hit_info.get('best_hit', 'None'),
+                "best_evalue": hit_info.get('best_evalue', '0'),
+                "best_score": hit_info.get('best_score', '0'),
+                "mean": mean,
+                "std": std,
+                "gmean": gmean
+            }
             
-            return result_txt 
+            # 写入 NFS
+            with open(final_json_path, 'w') as f:
+                json.dump(output_data, f)
+                
+            return f"Done: {sequence_id}"
         else:
-            return "HHR file missing or empty"
+            raise Exception("Empty HHR output")
 
     except Exception as e:
-        return f"Exception in worker: {str(e)}"
+        logger.error(f"Task failed for {sequence_id}: {e}")
+        # 即使失败也抛出异常，让 Celery 知道
+        raise e
+        
+    finally:
+        # 无论成功失败，都清理临时目录
+        if os.path.exists(work_dir):
+            shutil.rmtree(work_dir)

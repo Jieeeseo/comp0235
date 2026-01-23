@@ -1,104 +1,125 @@
+import re
 import sys
 import numpy as np
 from scipy.stats import gmean
 
-"""
-Script to parse the hhr file produced by HHSearch
-"""
-
 def get_hhr_results(hhr_file):
     """
-    Reads the hhr file and returns a dictionary of the results
+    Robustly parses HHSearch .hhr file to extract the best hit info.
     """
-    results = {}
-    with open(hhr_file) as fh_in:
-        for line in fh_in:
-            if line.startswith('Query '):
-                results['query_id'] = line.split()[1]
-            if line.startswith(' No '):
-                # 跳过当前的表头行，读取下一行（第一条命中结果）
-                best_hit_line = next(fh_in, None)
-                if best_hit_line and best_hit_line.strip():
-                    parts = best_hit_line.split()
-                    if len(parts) >= 11: # 确保列数足够
-                        results['best_hit'] = parts[1]
-                        results['best_prob'] = parts[2]
-                        results['best_evalue'] = parts[3]
-                        results['best_pvalue'] = parts[4]
-                        results['best_score'] = parts[5]
-                        results['best_aligned_cols'] = parts[6]
-                    else:
-                        # 兜底：如果第一行数据格式不对
-                        results['best_hit'] = "None"
-                        results['best_evalue'] = "0"
-                        results['best_score'] = "0"
-                else:
-                     # 没有任何命中结果的情况
-                    results['best_hit'] = "None"
-                    results['best_evalue'] = "0"
-                    results['best_score'] = "0"
-                break
+    best_hit = "None"
+    best_evalue = "0"
+    best_score = "0"
     
-    # 防止未找到 'Query' 或 'No' 的情况
-    if 'query_id' not in results:
-        results['query_id'] = "Unknown"
-    if 'best_hit' not in results:
-        results['best_hit'] = "None"
-        results['best_evalue'] = "0"
-        results['best_score'] = "0"
+    try:
+        with open(hhr_file, 'r') as f:
+            lines = f.readlines()
+            
+        hit_line = None
         
-    return results
+        # 1. 定位表头
+        # 表头通常包含: No Hit Prob E-value P-value Score ...
+        for i, line in enumerate(lines):
+            if "No Hit" in line and "Prob" in line:
+                # 表头的下一行就是 Best Hit (No 1)
+                if i + 1 < len(lines):
+                    hit_line = lines[i+1]
+                break
+        
+        if hit_line:
+            # 策略：即使描述文本里有空格，后面的数值列依然遵循特定的数字模式
+            # Prob (0-100), E-value (sci), P-value (sci), Score (float)
+            
+            # 使用 split() 获取第二列作为 ID (通常是可靠的，除非 ID 本身带空格)
+            parts = hit_line.strip().split()
+            if len(parts) > 1:
+                best_hit = parts[1]
+            
+            # 使用更宽容的正则提取数值
+            # 改进点：允许 \d+ (整数) 和 \d+\.\d+ (小数)，防止 100 或 0 导致匹配失败
+            # 捕获组: 1=Prob, 2=E-value, 3=P-value, 4=Score
+            # 模式解释：
+            #   \s+  至少一个空格
+            #   (\d+(?:\.\d+)?)  匹配 Prob (整数或小数)
+            #   \s+
+            #   ([0-9.]+[Ee]?[-+]?\d*) 匹配 E-value
+            #   \s+
+            #   ([0-9.]+[Ee]?[-+]?\d*) 匹配 P-value
+            #   \s+
+            #   (\d+(?:\.\d+)?) 匹配 Score
+            
+            regex_pattern = r'\s+(\d+(?:\.\d+)?)\s+([0-9.]+[Ee]?[-+]?\d*)\s+([0-9.]+[Ee]?[-+]?\d*)\s+(\d+(?:\.\d+)?)'
+            match = re.search(regex_pattern, hit_line)
+            
+            if match:
+                best_evalue = match.group(2)
+                best_score = match.group(4)
+            else:
+                # 如果正则失败，打印警告，不要默默失败
+                print(f"Warning: Regex failed to match metrics in file {hhr_file}. Line: {hit_line.strip()}")
+
+    except Exception as e:
+        print(f"Error parsing HHR {hhr_file}: {e}")
+        
+    return {
+        "best_hit": best_hit,
+        "best_evalue": best_evalue,
+        "best_score": best_score
+    }
 
 def get_score_statistics(hhr_file):
     """
-    Reads the hhr file and returns the mean, std dev and geometric mean of the
-    scores
+    Calculates Mean, Std, and GMean of the scores of all hits with E-value < 1.e-5
     """
-    scores = []
-    with open(hhr_file) as fh_in:
-        # 1. 先定位到 Hit Table 的开始
-        in_table = False
-        for line in fh_in:
-            if line.startswith(' No '):
-                in_table = True
-                continue # 跳过表头行
+    good_scores = []
+    
+    try:
+        with open(hhr_file, 'r') as f:
+            lines = f.readlines()
             
-            if in_table:
-                # 2. 如果遇到空行，说明表格结束
-                if line.strip() == '':
-                    break
+        start_parsing = False
+        
+        # 同样的宽容正则，确保能抓取到任何格式的数字
+        # 我们主要关心 Group 2 (E-value) 和 Group 4 (Score)
+        metric_pattern = re.compile(r'\s+(\d+(?:\.\d+)?)\s+([0-9.]+[Ee]?[-+]?\d*)\s+([0-9.]+[Ee]?[-+]?\d*)\s+(\d+(?:\.\d+)?)')
+
+        for line in lines:
+            # 找到表头开始解析
+            if "No Hit" in line and "Prob" in line:
+                start_parsing = True
+                continue
+            
+            if start_parsing:
+                if line.strip() == "": break # 空行表示表格结束
                 
-                # 3. 尝试解析分数列
-                parts = line.split()
-                # 标准行通常有 11+ 列，分数在第 6 列 (index 5)
-                # No Hit Prob E-value P-value Score ...
-                if len(parts) > 5:
+                match = metric_pattern.search(line)
+                if match:
                     try:
-                        # 尝试转换，如果不是数字（比如读到了奇怪的文本），就跳过
-                        score = float(parts[5])
-                        scores.append(score)
+                        e_value = float(match.group(2))
+                        score = float(match.group(4))
+                        
+                        # 过滤逻辑：只统计 E-value < 1.0e-5 的显著结果
+                        # 这与老师原本的逻辑保持一致
+                        if e_value < 1.0e-5:
+                            good_scores.append(score)
                     except ValueError:
                         continue
-    
-    if not scores:
+                        
+    except Exception as e:
+        print(f"Error calculating stats {hhr_file}: {e}")
+        
+    if not good_scores:
+        # 如果没有显著结果，返回 0
         return 0.0, 0.0, 0.0
+        
+    return np.mean(good_scores), np.std(good_scores), gmean(good_scores)
 
-    return np.mean(scores), np.std(scores), gmean(scores)
-
+# 为了兼容性，保留 main 块 (虽然 Celery Worker 是 import 调用，但保留也没坏处)
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         sys.exit(1)
-        
-    hhr_file = sys.argv[1]
     
-    try:
-        results = get_hhr_results(hhr_file)
-        mean, std, geometric_mean = get_score_statistics(hhr_file)
-        
-        print(f"query_id,best_hit,best_evalue,best_score,score_mean,score_std,score_gmean")
-        print(f"{results['query_id']},{results['best_hit']},{results['best_evalue']},{results['best_score']},{mean:.2f},{std:.2f},{geometric_mean:.2f}")
-    except Exception as e:
-        # 如果解析彻底失败，打印错误但不让 Celery 任务崩溃（或者让它崩溃以便重试，看你的选择）
-        # 这里选择打印错误信息，会被 pipeline_script 捕获
-        print(f"Error parsing HHR: {e}")
-        sys.exit(1) 
+    hhr_file = sys.argv[1]
+    res = get_hhr_results(hhr_file)
+    stats = get_score_statistics(hhr_file)
+    print(res, stats)

@@ -10,6 +10,7 @@
     - /nfs
     - /nfs/pdb70
     - /nfs/data
+    - /nfs/data/results
   become: true
   when: inventory_hostname == groups['workers'][0]
 
