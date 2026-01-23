@@ -1,0 +1,46 @@
+---
+# 1. PDB70 data
+- name: Check if PDB70 extracted data exists
+  stat:
+    path: /nfs/pdb70/pdb70_a3m.ffdata
+  register: pdb70_data
+
+- name: Download PDB70 database archive
+  get_url:
+    url: https://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs/pdb70_from_mmcif_latest.tar.gz
+    dest: /nfs/pdb70/pdb70_from_mmcif_latest.tar.gz
+    timeout: 30000
+    mode: '0644'
+  become: true
+  when: not pdb70_data.stat.exists
+
+- name: Unarchive PDB70 database
+  unarchive:
+    src: /nfs/pdb70/pdb70_from_mmcif_latest.tar.gz
+    dest: /nfs/pdb70/
+    remote_src: yes
+    extra_opts:
+      - --no-same-owner
+  become: true
+  when: not pdb70_data.stat.exists
+
+# 2. Mouse Proteome
+- name: Check if Mouse Proteome extracted data exists
+  stat:
+    path: /nfs/data/UP000000589_10090.fasta
+  register: mouse_proteome_data
+
+- name: Download Mouse Proteome dataset
+  get_url:
+    url: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000000589/UP000000589_10090.fasta.gz
+    dest: /nfs/data/UP000000589_10090.fasta.gz
+    mode: '0644'
+    timeout: 600
+  become: true
+  when: not mouse_proteome_data.stat.exists
+
+- name: Unzip Mouse Proteome
+  command: gunzip -k /nfs/data/UP000000589_10090.fasta.gz
+  args:
+    creates: /nfs/data/UP000000589_10090.fasta
+  become: true

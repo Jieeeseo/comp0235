@@ -56,3 +56,7 @@
     state: link
   become: true
   when: inventory_hostname == groups['workers'][0]
+
+- name: Import Data Download Tasks
+  import_tasks: data-download.yaml
+  when: inventory_hostname == groups['workers'][0]

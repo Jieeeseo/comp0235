@@ -11,7 +11,8 @@
   become: true
   roles:
     - rabbitmq
-    - celery_host 
+    - celery_host
+    - nfs 
 
 - name: Configure Worker Nodes
   hosts: workers
