@@ -147,7 +147,7 @@ cd /opt/calc_engine/
 	Once the queue is empty and file count matches the input list, run the collator:
 
 	```
-	python3 collator.py
+	sudo python3 collator.py
 	```
 
 	This will generate two files in the current directory:
